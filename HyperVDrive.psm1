@@ -1,5 +1,8 @@
 using namespace Microsoft.PowerShell.SHiPS
 
+#Load support functions
+. "$PSScriptRoot\HyperVDrive.helper.ps1"
+
 [SHiPSProvider()]
 class HVRoot : SHiPSDirectory
 {
@@ -15,14 +18,22 @@ class HVRoot : SHiPSDirectory
     {
         $obj = @()
 
-        if([HVRoot]::connectedHosts){
+        if([HVRoot]::connectedHosts)
+        {
             [HVRoot]::connectedHosts | ForEach-Object {
                 $obj += [HVMachine]::new($_.ComputerName, $_)
             }
         }
         # Else default to localhost
         else{
-            $obj += [HVMachine]::new($env:COMPUTERNAME)
+            try
+            {
+                $obj += [HVMachine]::new($env:COMPUTERNAME)    
+            }
+            catch
+            {
+                Write-Warning 'The local node does not seem to be a Hyper-V host. Use Connect-VMHost to connect to a remote computer.'   
+            }
         }
         return $obj
     }
@@ -51,24 +62,51 @@ class HVMachine : SHiPSDirectory
         $vms = (Get-VM -ComputerName $this.connectedHost.ComputerName).VMName | Sort-Object
         foreach ($vm in $vms)
         {
-            $obj += [HVVirtualMachine]::new($vm, $this.connectedHost)
+            $obj = @()
+            $obj += [VirtualMachines]::new('VirtualMachines', $this.connectedHost.ComputerName)
+            $obj += [VirtualSwitches]::new('VirtualSwitches', $this.connectedHost.ComputerName)
+            return $obj
+
+            #$obj += [HVVirtualMachine]::new($vm, $this.connectedHost)
         }
         
         return $obj
     }
 }
 
-[SHiPSProvider()]
-class HVVirtualMachine : SHiPSDirectory
+[ShiPSProvider()]
+class VirtualMachines : SHiPSDirectory
 {
-    [string] $vmname
-
     [string] $hostname
 
-    HVVirtualMachine([string]$name, [Microsoft.HyperV.PowerShell.VMHost]$connectedHost):base($name)
+    VirtualMachines([string]$name, [string] $hostName):base($name)
+    {
+        $this.hostname = $hostName        
+    }
+    
+    [Object[]] GetChildItem()
+    {
+        $obj = @()
+        
+        # Find all VMs
+        $vms = (Get-VM -ComputerName $this.hostName).Name | Sort-Object
+        foreach ($vm in $vms) {
+            $obj += [VirtualMachine]::new($vm, $this.hostName)
+        }
+        return $obj        
+    }
+}
+
+[SHiPSProvider()]
+class VirtualMachine : SHiPSDirectory
+{
+    [string] $vmname
+    [string] $hostname
+
+    VirtualMachine([string]$name, [string]$hostName):base($name)
     {
         $this.vmname = $name
-        $this.hostname = $connectedHost.ComputerName
+        $this.hostname = $hostName
     }
 
     [object[]] GetChildItem()
@@ -77,14 +115,45 @@ class HVVirtualMachine : SHiPSDirectory
     }    
 }
 
-function Connect-HVHost
+[ShiPSProvider()]
+class VirtualSwitches : SHiPSDirectory
 {
-    param(
-        [Parameter(Mandatory)]
-        [string]$ComputerName
-    )
+    [string] $hostname
+
+    VirtualSwitches([string]$name, [string] $hostName):base($name)
+    {
+        $this.hostname = $hostName        
+    }
     
-    ([HVRoot]::connectedHosts).Add((Get-VMHost -ComputerName $ComputerName))
+    [Object[]] GetChildItem()
+    {
+        $obj = @()
+        
+        # Find all VMs
+        $vmSwitches = (Get-VMSwitch -ComputerName $this.hostName).Name | Sort-Object
+        foreach ($switch in $vmSwitches) {
+            $obj += [VirtualSwitch]::new($switch, $this.hostName)
+        }
+        return $obj        
+    }
+}
+
+[SHiPSProvider()]
+class VirtualSwitch : SHiPSDirectory
+{
+    [string] $switchname
+    [string] $hostname
+
+    VirtualSwitch([string]$name, [string]$hostName):base($name)
+    {
+        $this.switchname = $name
+        $this.hostname = $hostName
+    }
+
+    [object[]] GetChildItem()
+    {
+        return (Get-VMSwitch -ComputerName $this.hostname -Name $this.switchname)
+    }    
 }
 
 Export-ModuleMember -Function *
