@@ -2,7 +2,7 @@
 This is yet another experimental module for browsing Hyper-V host server artifacts as PowerShell Drive. This uses the SHiPS provider framework.
 
 Here is the module in action
-![](https://i.imgur.com/FjTapoG.gif)
+![](http://www.powershellmagazine.com/wp-content/uploads/2018/01/HyperVDrive.gif)
 
 TODO:
 - Add support for Hyper-V Host properties as leaf
